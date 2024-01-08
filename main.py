@@ -23,7 +23,7 @@ stop = StoppingCriteriaList([StopSequenceCriteria("\n"), StopSequenceCriteria("#
 
 model = AutoModelForCausalLM.from_pretrained(model_id)
 
-pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, streamer=streamer, max_new_tokens=100)
+pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=100, streamer=streamer)
 
 class Pipe:
     def __init__(self, p):
@@ -50,8 +50,7 @@ tools = {
     "Wikipedia": (wikipedia, "Search Wikipedia for information for a topic"),
 }
 
-template = """
-### System: You are a helpful agent but have limited knowlege about recent events and also are no expert in any topic.
+template = """### System: You are a helpful agent but have limited knowlege about recent events and also are no expert in any topic.
 To gather more information about a topic, you have the following tools available:
 {tools_description}
 When you think you have all the information necessary to answer the question posed by the user, respond with a short summary of your findings. Then, use the format ## Answer: <summary text>
@@ -78,10 +77,11 @@ When you think you have all the information necessary to answer the question pos
 ## Thought: By comparing the two articles, I know how to describe the difference between red and white wine.
 ## Answer: The difference between red and white wine comes from wether the skin of the grapes is left on or not. For red wine, red or violet grapes are typically used and the flavour and color is also extracted from the grape skin. For white wine, the the skin is removed from the grapes.
 
+
 ### User: {question}
+
 ### Assistant:
-## """
-template = re.sub('\s{2,}', ' ', template)
+{agent_scratchpad}"""
 
 from langchain.prompts import PromptTemplate
 p = PromptTemplate.from_template(template)
@@ -92,26 +92,62 @@ def describeTools(tools):
 
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.exceptions import OutputParserException
-
 from langchain.agents.agent import AgentOutputParser
+
+from langchain.pydantic_v1 import BaseModel, Field
+from langchain.tools import BaseTool, StructuredTool, tool
+@tool
+def thought(text: str):
+    """Just a buffer for the model to think"""
+    return ""
+
+@tool("Wikipedia")
+def wiki(text: str):
+    """Access wikipedia"""
+    result = wikipedia.run(text)
+    result = " ".join(result.split("\n\n\n")[0].split("\n")[1:]).split("Summary: ")[1]
+    return result
 
 class ReActSingleInputOutputParser(AgentOutputParser):
     def get_format_instructions(self):
         return FORMAT_INSTRUCTIONS
 
     def parse(self, text: str):
-        includes_answer = "## Answer:" in text
-        print("parse: ", text)
-        return AgentFinish(return_values={"output": text}, log=text)
+        if text.startswith(" "):
+            text = text[1:]
+        text = text.replace("\n", "")
+        if text.startswith("Answer:"):
+            return AgentFinish({"output": text[len("Answer:") :]}, text)
+        if text.startswith("Action:"):
+            regex = re.compile(r"Action: (\w+)\[(.*)\]")
+            result = regex.match(text)
+            if result is None:
+                raise OutputParserException(f"Could not parse action: {text}")
+            function = result.group(1)
+            argument = result.group(2)
+            print(f"running action: {function} with argument: {argument}")
+            return AgentAction(function, argument, f"{function}[{argument}]")
+        if text.startswith("Thought:"):
+            thought = text[len("Thought: ") :]
+            return AgentAction("thought", thought, f"Thought: {thought}")
+        raise OutputParserException(f"Could not parse action: {[text]}")
 
 def formatMessages(messages):
-    print(messages)
-    return ""
+    result = ""
+    print("")
+    for message in messages:
+        if message[0].tool == "thought":
+            result += f"## Thought: {message[0].tool_input}\n"
+        else:
+            result += f"## Action: {message[0].tool}[{message[0].tool_input}]\n"
+            result += f"## {message[0].tool} Result: {message[1]}\n"
+    result += "##"
+    return result
 
 agent = (
     {
         "question": lambda x: x["question"],
-        "assistant_scratchpad": lambda x: formatMessages(x["intermediate_steps"]),
+        "agent_scratchpad": lambda x: formatMessages(x["intermediate_steps"]),
         "tools_description": lambda x: describeTools(tools),
     }
     | p
@@ -120,5 +156,5 @@ agent = (
 )
 
 from langchain.agents import AgentExecutor
-agent_executor = AgentExecutor(agent=agent, tools=[], verbose=True)
-print("answer: ", agent_executor.invoke({"question": "What is backpropagation?"}))
+agent_executor = AgentExecutor(agent=agent, tools=[wiki, thought], verbose=True)
+agent_executor.invoke({"question": "Please explain in three sentences how backpropagation works."})
