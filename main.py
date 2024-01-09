@@ -1,5 +1,6 @@
 import torch
 import re
+import sys
 
 print("loading model...")
 
@@ -157,4 +158,4 @@ agent = (
 
 from langchain.agents import AgentExecutor
 agent_executor = AgentExecutor(agent=agent, tools=[wiki, thought], verbose=True)
-agent_executor.invoke({"question": "Please explain in three sentences how backpropagation works."})
+agent_executor.invoke({"question": sys.argv[1]})
