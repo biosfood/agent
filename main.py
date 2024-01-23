@@ -5,10 +5,22 @@ import sys
 print("loading model...")
 
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, TextStreamer, StoppingCriteria, StoppingCriteriaList
+from transformers import AutoTokenizer, TextStreamer, StoppingCriteria, StoppingCriteriaList
 
-model_id = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+model_id = "/opt/models/ToolBench/ToolLLaMA-2-7b-v2/"
 
+from intel_extension_for_transformers.transformers import AutoModelForCausalLM, WeightOnlyQuantConfig
+from intel_extension_for_transformers.transformers.pipeline import pipeline
+
+woq_config = WeightOnlyQuantConfig(weight_dtype="int4", compute_dtype="int8")
+model = AutoModelForCausalLM.from_pretrained(
+                                            model_id,
+                                            quantization_config=woq_config,
+                                            trust_remote_code=True
+                                            )
+
+
+#model = AutoModelForCausalLM.from_pretrained(model_id, load_in_8bit=True)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 streamer = TextStreamer(tokenizer, skip_prompt=True)
 
@@ -22,16 +34,22 @@ class StopSequenceCriteria(StoppingCriteria):
 
 stop = StoppingCriteriaList([StopSequenceCriteria("\n"), StopSequenceCriteria("##")])
 
-model = AutoModelForCausalLM.from_pretrained(model_id)
+from intel_extension_for_transformers.transformers.pipeline import pipeline
+pipe = pipeline(
+        task="text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        framework="pt",
+    )
 
-pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=100, streamer=streamer)
+# pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=100, streamer=streamer)
 
 class Pipe:
     def __init__(self, p):
         self.p = p
 
     def __call__(self, x):
-        return self.p(x, stopping_criteria=stop)
+        return self.p(x)#, stopping_criteria=stop)
     
     @property
     def task(self):
@@ -41,9 +59,9 @@ class Pipe:
     def _postprocess_params(self):
         return self.p._postprocess_params
 
-llm = HuggingFacePipeline(pipeline=Pipe(pipe))
+llm = HuggingFacePipeline(pipeline=pipe)
 
-from langchain.tools import WikipediaQueryRun
+from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
@@ -87,7 +105,7 @@ When you think you have all the information necessary to answer the question pos
 from langchain.prompts import PromptTemplate
 p = PromptTemplate.from_template(template)
 
-pipeline = p | llm.bind(stop=["\n"])
+# pipeline = p | llm.bind(stop=["\n"])
 def describeTools(tools):
     return "\n".join(f"- {name}: {description}" for name, (tool, description) in tools.items())
 
@@ -95,7 +113,7 @@ from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.exceptions import OutputParserException
 from langchain.agents.agent import AgentOutputParser
 
-from langchain.pydantic_v1 import BaseModel, Field
+# from langchain.pydantic_v1 import BaseModel, Field
 from langchain.tools import BaseTool, StructuredTool, tool
 @tool
 def thought(text: str):
@@ -152,7 +170,7 @@ agent = (
         "tools_description": lambda x: describeTools(tools),
     }
     | p
-    | llm.bind(stopping_criteria=stop)
+    | llm
     | ReActSingleInputOutputParser()
 )
 
