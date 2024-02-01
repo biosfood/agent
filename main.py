@@ -24,7 +24,7 @@ class StopOnTokens(StoppingCriteria):
     def __call__(
         self, input_ids, scores, **kwargs
     ) -> bool:
-        return tokenizer.decode(input_ids[0]).endswith("\n\n") or input_ids[0][-1] in self.stop_token_id 
+        return tokenizer.decode(input_ids[0]).endswith("\n") or input_ids[0][-1] in self.stop_token_id 
 
 stopping_criteria = StoppingCriteriaList(
     [
@@ -45,13 +45,29 @@ llm = HuggingFacePipeline(pipeline=pipeline(
 
 from langchain.prompts import PromptTemplate
 
-template = """You are a very intelligent AI assistant but were not updated recently. You do not have knowlege of recent events or scientific developments.
-Your goal is to provide accurate and helpful information. To do this, you will first have to look for relevant scientific articles.
-Provide short and consice answers wherever possible.
-Instruct: List 3 keywords for scientific articles that are most relevant to answer the question "{question}"!
-Output: Articles that will help answer the question can be found by the following keywords:
-- \""""
+template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
+When searching for aritcles, it is important to only use few words and just include relevant keywords. Some examples for good queries are: "transformer language model architecture" or "methanol consumption effects".
+Istruct: {question}
+Output: Relevant articles to answer this question can be found by the following query: \""""
 
-prompt = PromptTemplate.from_template(template)
-chain = prompt | llm
-print(chain.invoke({"question": "How much coffee can I consume in a day?"}))
+question = "How much coffee can I consume in a day?"
+
+keyword_chain = PromptTemplate.from_template(template) | llm
+
+query = keyword_chain.invoke({"question": question}).split("\"")[0]
+
+print(f"seaching with keyword \"{query}\"")
+
+import arxiv
+client = arxiv.Client()
+
+search = arxiv.Search(
+  query = query,
+  max_results = 3,
+  sort_by = arxiv.SortCriterion.Relevance
+)
+
+results = client.results(search)
+
+for result in results:
+    print(result)
