@@ -52,4 +52,8 @@ value_chain = PromptTemplate.from_template(template) | llm
 for result in results:
     title = result["title"]
     value = value_chain.invoke({"question": question, "query": query, "title": title}).split("\"")[0]
-    print(f"\"{title}\": {value}")
+    result["value"] = int(value)
+
+print("top 5 results:")
+for result in sorted(results, key=lambda x: x["value"], reverse=True)[:5]:
+    print(f"\"{result['title']}\": {result['value']}")
