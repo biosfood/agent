@@ -30,7 +30,7 @@ search = arxiv.Search(
 arxiv_results = client.results(search)
 
 for result in arxiv_results:
-    results.append({"title": result.title, "summary": result.summary})
+    results.append({"title": result.title, "abstract": result.summary})
 
 payload = {
     "q": query,
@@ -48,6 +48,16 @@ Istruct: You are trying to answer the question: \"{question}\". In an effort to 
 Output: On a scale from 1 to 10, the likelyhood of this article helping me answer the question \"{question}\" is: \""""
 
 value_chain = PromptTemplate.from_template(template) | llm
+
+# deduplicate result titles
+titles = set()
+for result in results:
+    if result["title"] not in titles:
+        titles.add(result["title"])
+    else:
+        results.remove(result)
+
+print(f"found {len(results)} results")
 
 for result in results:
     title = result["title"]
