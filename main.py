@@ -76,11 +76,32 @@ Istruct: {question}
 Output: 
 """
 
-answer_chain = PromptTemplate.from_template(template) | llm
+summarize_chain = PromptTemplate.from_template(template) | llm
 
-print("top 5 results:")
-results = sorted(results, key=lambda x: x["value"], reverse=True)[:5]
-for result in results:
-    print(f"\"{result['title']}\": {result['value']}")
-    answer = answer_chain.invoke({"context": result["abstract"], "question": question})
-    print(answer)
+results = sorted(results, key=lambda x: x["value"], reverse=True)
+
+opinions = []
+
+for result in results[:5]:
+    if result["value"] < 5:
+        continue
+    print(f"summarizing \"{result['title']}\" (got a score of {result['value']} / 10)")
+    answer = summarize_chain.invoke({"context": result["abstract"], "question": question})
+    opinions.append(answer)
+
+opinions_text = "\n".join(opinions)
+
+template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
+After looking at some different articles, we were able to summarize them in the following set of expert opinions on the topic:
+
+{opinions}
+
+Answer the question by summarizing the opinions in a single paragraph and also point out weather all of the opinions align.
+Istruct: {question}
+Output: 
+"""
+
+result_chain = PromptTemplate.from_template(template) | llm
+
+answer = result_chain.invoke({"opinions": opinions_text, "question": question})
+print(answer)
