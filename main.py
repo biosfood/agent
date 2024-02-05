@@ -38,8 +38,9 @@ payload = {
 }
 
 result = requests.get("https://api.core.ac.uk/v3/search/works", params=payload)
-print(result.url)
 for result in result.json()["results"]:
+    if result["abstract"] == None or len(result["abstract"]) < 10:
+        continue
     results.append(result)
 
 template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
@@ -64,6 +65,22 @@ for result in results:
     value = value_chain.invoke({"question": question, "query": query, "title": title}).split("\"")[0]
     result["value"] = int(value)
 
+template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
+After finding a suitable article, we now have to create a concise answer using only the information provided.
+
+Context:
+{context}
+
+Answer the question only using the provided context and keep your answer to a single paragraph
+Istruct: {question}
+Output: 
+"""
+
+answer_chain = PromptTemplate.from_template(template) | llm
+
 print("top 5 results:")
-for result in sorted(results, key=lambda x: x["value"], reverse=True)[:5]:
+results = sorted(results, key=lambda x: x["value"], reverse=True)[:5]
+for result in results:
     print(f"\"{result['title']}\": {result['value']}")
+    answer = answer_chain.invoke({"context": result["abstract"], "question": question})
+    print(answer)
