@@ -7,18 +7,26 @@ client = arxiv.Client()
 
 import requests
 
+import logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger("arxiv")
+logger.setLevel(logging.WARNING)
+
 template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
 When searching for aritcles, it is important to only use few words and just include relevant keywords. Some examples for good queries are: "transformer language model architecture" or "methanol consumption effects".
 Istruct: {question}
 Output: Relevant articles to answer this question can be found by the following query: \""""
 
-question = "How much coffee can I consume in a day without fearing negative health outcomes?"
+question = input("Query (leave empty for default testing query): ")
+
+if question == "":
+    question = "How much coffee can I consume in a day without fearing negative health outcomes?"
 
 keyword_chain = PromptTemplate.from_template(template) | llm
 
 query = keyword_chain.invoke({"question": question}).split("\"")[0]
 
-print(f"seaching with keyword \"{query}\"")
+print(f"seaching with query \"{query}\"")
 
 results = []
 
