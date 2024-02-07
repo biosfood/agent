@@ -1,3 +1,6 @@
+import os
+os.environ["LOGLEVEL"] = "WARNING"
+
 model_id = "/opt/models/microsoft/phi-2/"
 
 import torch
