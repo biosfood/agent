@@ -1,6 +1,5 @@
 from model import llm
-
-from langchain.prompts import PromptTemplate
+from prompts import *
 
 import arxiv
 client = arxiv.Client()
@@ -12,17 +11,15 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger("arxiv")
 logger.setLevel(logging.WARNING)
 
-template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
-When searching for aritcles, it is important to only use few words and just include relevant keywords. Some examples for good queries are: "transformer language model architecture" or "methanol consumption effects".
-Istruct: {question}
-Output: Relevant articles to answer this question can be found by the following query: \""""
-
 question = input("Query (leave empty for default testing query): ")
 
 if question == "":
     question = "How much coffee can I consume in a day without fearing negative health outcomes?"
 
-keyword_chain = PromptTemplate.from_template(template) | llm
+keyword_chain = keyword_template | llm
+summarize_chain = summarize_template | llm
+value_chain = value_template | llm
+result_chain = result_template | llm
 
 query = keyword_chain.invoke({"question": question}).split("\"")[0]
 
@@ -51,13 +48,6 @@ for result in result.json()["results"]:
         continue
     results.append(result)
 
-template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
-After searching for articles matching the query, we will now have to judge them on their likelihood of being helpful.
-Istruct: You are trying to answer the question: \"{question}\". In an effort to answer this, you have searched for articles using the query \"{query}\". One specifc article we found has the title \"{title}\". Will this article be useful and worth investigating further.
-Output: On a scale from 1 to 10, the likelyhood of this article helping me answer the question \"{question}\" is: \""""
-
-value_chain = PromptTemplate.from_template(template) | llm
-
 # deduplicate result titles
 titles = set()
 for result in results:
@@ -67,29 +57,13 @@ for result in results:
         results.remove(result)
 
 print(f"found {len(results)} results")
-
 for result in results:
     title = result["title"]
     value = value_chain.invoke({"question": question, "query": query, "title": title}).split("\"")[0]
     result["value"] = int(value)
 
-template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
-After finding a suitable article, we now have to create a concise answer using only the information provided.
-
-Context:
-{context}
-
-Answer the question only using the provided context and keep your answer to a single paragraph
-Istruct: {question}
-Output: 
-"""
-
-summarize_chain = PromptTemplate.from_template(template) | llm
-
 results = sorted(results, key=lambda x: x["value"], reverse=True)
-
 opinions = []
-
 for result in results[:5]:
     if result["value"] < 5:
         continue
@@ -98,18 +72,6 @@ for result in results[:5]:
     opinions.append(answer)
 
 opinions_text = "\n".join(opinions)
-
-template = """The assistant is a state of the art assistant but has not received recent updates. However, the assistant is allowed to search for articles to form a well researched anwser to its question.
-After looking at some different articles, we were able to summarize them in the following set of expert opinions on the topic:
-
-{opinions}
-
-Answer the question by summarizing the opinions in a single paragraph and also point out weather all of the opinions align.
-Istruct: {question}
-Output: 
-"""
-
-result_chain = PromptTemplate.from_template(template) | llm
 
 answer = result_chain.invoke({"opinions": opinions_text, "question": question})
 print(answer)
