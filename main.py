@@ -1,5 +1,6 @@
 from model import llm
 from prompts import *
+from tqdm import tqdm
 
 import arxiv
 client = arxiv.Client()
@@ -57,7 +58,7 @@ for result in results:
         results.remove(result)
 
 print(f"found {len(results)} results")
-for result in results:
+for result in tqdm(results, desc="filtering results on value by titles"):
     title = result["title"]
     value = value_chain.invoke({"question": question, "query": query, "title": title}).split("\"")[0]
     result["value"] = int(value)
